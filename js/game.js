@@ -31,6 +31,7 @@ let fragileDishes = [];
 let drippingFaucets = [];
 let soapBubbles = [];
 let utensils = [];
+let utensilRacks = [];
 
 let score = 0;
 let timeLeft = 90;
@@ -45,6 +46,19 @@ let menuGraphics;
 let gameOverText;
 let finalScoreText;
 let hintText;
+let objectivesPanel;
+let objStainText;
+let objCrumbText;
+let objFaucetText;
+let objUtensilText;
+let objDishText;
+let objPanelGraphics;
+
+let levelTotalStains = 0;
+let levelTotalCrumbs = 0;
+let levelTotalFaucets = 0;
+let levelTotalUtensils = 0;
+let levelTotalDishes = 0;
 
 let playerVelocity = new Phaser.Math.Vector2();
 let isSliding = false;
@@ -108,6 +122,56 @@ function create() {
             stroke: '#000000',
             strokeThickness: 3
         }).setScrollFactor(0).setDepth(100).setOrigin(0.5);
+
+    objPanelGraphics = this.add.graphics();
+    objPanelGraphics.setScrollFactor(0).setDepth(99);
+    objPanelGraphics.fillStyle(0x000000, 0.55);
+    objPanelGraphics.fillRoundedRect(15, 60, 205, 180, 10);
+    objPanelGraphics.lineStyle(2, 0x4fc3f7, 0.8);
+    objPanelGraphics.strokeRoundedRect(15, 60, 205, 180, 10);
+
+    let objTitle = this.add.text(118, 75, '🎯 关卡目标', {
+        fontSize: '15px',
+        fill: '#ffeb3b',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setScrollFactor(0).setDepth(100).setOrigin(0.5);
+
+    objStainText = this.add.text(28, 100, '污渍: 0/0 ✅', {
+        fontSize: '14px',
+        fill: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setScrollFactor(0).setDepth(100);
+
+    objCrumbText = this.add.text(28, 125, '碎屑: 0/0 ✅', {
+        fontSize: '14px',
+        fill: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setScrollFactor(0).setDepth(100);
+
+    objFaucetText = this.add.text(28, 150, '水龙头: 0/0 ✅', {
+        fontSize: '14px',
+        fill: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setScrollFactor(0).setDepth(100);
+
+    objUtensilText = this.add.text(28, 175, '餐具整理: 0/0 ✅', {
+        fontSize: '14px',
+        fill: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setScrollFactor(0).setDepth(100);
+
+    objDishText = this.add.text(28, 200, '杯盘完好: 0/0 ✅', {
+        fontSize: '14px',
+        fill: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setScrollFactor(0).setDepth(100);
 
     gameOverText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, '', {
         fontSize: '64px',
@@ -241,6 +305,8 @@ function clearLevel() {
     soapBubbles = [];
     utensils.forEach(u => u.destroy());
     utensils = [];
+    utensilRacks.forEach(r => r.destroy());
+    utensilRacks = [];
     sprayParticles.forEach(p => p.destroy());
     sprayParticles = [];
 
@@ -313,9 +379,15 @@ function createLevel(levelNum) {
         createDrippingFaucet(x, y);
     }
 
+    for (let i = 0; i < 2; i++) {
+        let rackX = i === 0 ? counterLeft + 80 : counterRight - 80;
+        let rackY = counterBottom - 40;
+        createUtensilRack(rackX, rackY);
+    }
+
     for (let i = 0; i < 6; i++) {
         let x = Phaser.Math.Between(counterLeft + 60, counterRight - 60);
-        let y = Phaser.Math.Between(counterTop + 60, counterBottom - 60);
+        let y = Phaser.Math.Between(counterTop + 60, counterBottom - 100);
         createUtensil(x, y);
     }
 
@@ -324,6 +396,12 @@ function createLevel(levelNum) {
         let y = Phaser.Math.Between(counterTop + 30, counterBottom - 30);
         createSoapBubble(x, y);
     }
+
+    levelTotalStains = stains.length;
+    levelTotalCrumbs = crumbs.length;
+    levelTotalFaucets = drippingFaucets.length;
+    levelTotalUtensils = utensils.length;
+    levelTotalDishes = fragileDishes.length;
 }
 
 function drawKitchenBackground() {
@@ -861,6 +939,7 @@ function createUtensil(x, y) {
     utensil.graphics = graphics;
     utensil.vx = 0;
     utensil.vy = 0;
+    utensil.organized = false;
 
     utensils.push(utensil);
     return utensil;
@@ -892,6 +971,100 @@ function createSoapBubble(x, y) {
 
     soapBubbles.push(bubble);
     return bubble;
+}
+
+function createUtensilRack(x, y) {
+    let scene = game.scene.scenes[0];
+    let rack = scene.add.container(x, y);
+    rack.setDepth(4);
+    rack.radius = 45;
+
+    let base = scene.add.graphics();
+    base.fillStyle(0x607d8b, 1);
+    base.fillRoundedRect(-55, -35, 110, 70, 8);
+    base.lineStyle(3, 0x455a64, 1);
+    base.strokeRoundedRect(-55, -35, 110, 70, 8);
+
+    let inner = scene.add.graphics();
+    inner.fillStyle(0x37474f, 1);
+    inner.fillRoundedRect(-48, -28, 96, 56, 5);
+
+    let slots = scene.add.graphics();
+    slots.lineStyle(1, 0x546e7a, 0.6);
+    for (let i = 0; i < 4; i++) {
+        let sx = -40 + i * 27;
+        slots.strokeRect(sx, -22, 22, 44);
+    }
+
+    let glow = scene.add.graphics();
+    glow.fillStyle(0x4caf50, 0);
+    glow.fillRoundedRect(-55, -35, 110, 70, 8);
+
+    let label = scene.add.text(0, 50, '餐具架', {
+        fontSize: '14px',
+        fill: '#81c784',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setOrigin(0.5);
+
+    let countLabel = scene.add.text(0, -50, '0/3', {
+        fontSize: '14px',
+        fill: '#ffffff',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setOrigin(0.5);
+
+    rack.add([base, inner, slots, glow, label, countLabel]);
+    rack.glow = glow;
+    rack.countLabel = countLabel;
+    rack.storedCount = 0;
+    rack.capacity = 3;
+
+    utensilRacks.push(rack);
+    return rack;
+}
+
+function setUtensilOrganized(utensil, rack) {
+    utensil.organized = true;
+    utensil.vx = 0;
+    utensil.vy = 0;
+
+    let offsetIndex = rack.storedCount;
+    let offsets = [
+        { x: -28, y: 0 }, { x: 0, y: 0 }, { x: 28, y: 0 }
+    ];
+    let offset = offsets[offsetIndex] || { x: 0, y: 0 };
+
+    let scene = game.scene.scenes[0];
+    scene.tweens.add({
+        targets: utensil,
+        x: rack.x + offset.x,
+        y: rack.y + offset.y,
+        rotation: 0,
+        scaleX: 0.85,
+        scaleY: 0.85,
+        duration: 250,
+        ease: 'Cubic.easeOut'
+    });
+
+    rack.storedCount++;
+    rack.countLabel.setText(rack.storedCount + '/' + rack.capacity);
+
+    if (rack.storedCount >= rack.capacity) {
+        scene.tweens.add({
+            targets: rack.glow,
+            alpha: 0.25,
+            duration: 400,
+            yoyo: true,
+            repeat: 1
+        });
+        rack.countLabel.setFill('#a5d6a7');
+    }
+
+    score += 8;
+    createScorePopup(utensil.x, utensil.y - 20, '+8');
 }
 
 function update(time, delta) {
@@ -1107,6 +1280,7 @@ function updateCrumbs(dt) {
 
 function updateUtensils(dt) {
     for (let utensil of utensils) {
+        if (utensil.organized) continue;
         utensil.x += utensil.vx * dt;
         utensil.y += utensil.vy * dt;
         utensil.vx *= 0.92;
@@ -1221,11 +1395,25 @@ function updateCollisions(dt) {
     }
 
     for (let utensil of utensils) {
+        if (utensil.organized) continue;
         let dist = Phaser.Math.Distance.Between(player.x, player.y, utensil.x, utensil.y);
         if (dist < 30) {
             let pushDir = new Phaser.Math.Vector2(utensil.x - player.x, utensil.y - player.y).normalize();
             utensil.vx = pushDir.x * 200;
             utensil.vy = pushDir.y * 200;
+        }
+    }
+
+    for (let i = utensils.length - 1; i >= 0; i--) {
+        let utensil = utensils[i];
+        if (utensil.organized) continue;
+        for (let rack of utensilRacks) {
+            if (rack.storedCount >= rack.capacity) continue;
+            let dist = Phaser.Math.Distance.Between(utensil.x, utensil.y, rack.x, rack.y);
+            if (dist < 40) {
+                setUtensilOrganized(utensil, rack);
+                break;
+            }
         }
     }
 }
@@ -1427,14 +1615,48 @@ function updateUI() {
     } else {
         timeText.setFill('#ffffff');
     }
+
+    if (gameState !== 'playing') return;
+
+    let stainsLeft = stains.length;
+    let stainDone = stainsLeft === 0 && levelTotalStains > 0;
+    objStainText.setText('污渍: ' + (levelTotalStains - stainsLeft) + '/' + levelTotalStains + (stainDone ? ' ✅' : ''));
+    objStainText.setFill(stainDone ? '#81c784' : '#ffffff');
+
+    let crumbsLeft = crumbs.filter(c => !c.collected).length;
+    let crumbDone = crumbsLeft === 0 && levelTotalCrumbs > 0;
+    objCrumbText.setText('碎屑: ' + (levelTotalCrumbs - crumbsLeft) + '/' + levelTotalCrumbs + (crumbDone ? ' ✅' : ''));
+    objCrumbText.setFill(crumbDone ? '#81c784' : '#ffffff');
+
+    let faucetsClosed = drippingFaucets.filter(f => !f.dripping).length;
+    let faucetDone = faucetsClosed === levelTotalFaucets && levelTotalFaucets > 0;
+    objFaucetText.setText('水龙头: ' + faucetsClosed + '/' + levelTotalFaucets + (faucetDone ? ' ✅' : ''));
+    objFaucetText.setFill(faucetDone ? '#81c784' : '#ffffff');
+
+    let utensilsOrg = utensils.filter(u => u.organized).length;
+    let utensilDone = utensilsOrg === levelTotalUtensils && levelTotalUtensils > 0;
+    objUtensilText.setText('餐具整理: ' + utensilsOrg + '/' + levelTotalUtensils + (utensilDone ? ' ✅' : ''));
+    objUtensilText.setFill(utensilDone ? '#81c784' : '#ffffff');
+
+    let dishesIntact = fragileDishes.filter(d => !d.broken).length;
+    let dishDone = dishesIntact === levelTotalDishes && levelTotalDishes > 0;
+    if (levelTotalDishes > 0 && dishesIntact < levelTotalDishes) {
+        objDishText.setText('杯盘完好: ' + dishesIntact + '/' + levelTotalDishes + ' ❌');
+        objDishText.setFill('#e57373');
+    } else {
+        objDishText.setText('杯盘完好: ' + dishesIntact + '/' + levelTotalDishes + (dishDone ? ' ✅' : ''));
+        objDishText.setFill(dishDone ? '#81c784' : '#ffffff');
+    }
 }
 
 function checkLevelComplete() {
     let allClean = stains.length === 0;
     let allCrumbsCollected = crumbs.filter(c => !c.collected).length === 0;
     let allFaucetsClosed = drippingFaucets.every(f => !f.dripping);
+    let allUtensilsOrganized = utensils.every(u => u.organized);
+    let allDishesIntact = fragileDishes.every(d => !d.broken);
 
-    if (allClean && allCrumbsCollected && allFaucetsClosed) {
+    if (allClean && allCrumbsCollected && allFaucetsClosed && allUtensilsOrganized && allDishesIntact) {
         nextLevel();
     }
 }
