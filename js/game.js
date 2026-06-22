@@ -22,6 +22,14 @@ const STAIN_COLORS = {
     [STAIN_WATER]: { fill: 0x4fc3f7, alpha: 0.5, name: '水渍' }
 };
 
+const ITEM_SPONGE = 'sponge';
+const ITEM_CLEANER = 'cleaner';
+
+const ITEM_INFO = {
+    [ITEM_SPONGE]: { name: '海绵', color: '#ffb74d', desc: '滑行时清洁效果+100%' },
+    [ITEM_CLEANER]: { name: '清洁剂', color: '#4fc3f7', desc: '喷雾冷却-50%，可软化油渍' }
+};
+
 let gameConfig = {
     type: Phaser.AUTO,
     width: GAME_WIDTH,
@@ -55,6 +63,8 @@ let utensilRacks = [];
 let droppedItems = [];
 let comboText;
 let stainTypeText;
+let heldItemHud;
+let heldItemIcon;
 
 let score = 0;
 let timeLeft = 90;
@@ -121,6 +131,7 @@ function create() {
     keys.SPACE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     keys.SHIFT = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
     keys.E = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    keys.Q = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     keys.ENTER = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
 
     scoreText = this.add.text(20, 20, '分数: 0', {
@@ -148,7 +159,7 @@ function create() {
     }).setScrollFactor(0).setDepth(100);
 
     hintText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 40,
-        'WASD/方向键移动 | 空格喷清洁剂 | Shift滑行 | E交互/捡道具', {
+        'WASD/方向键移动 | 空格喷清洁剂 | Shift滑行 | E交互/拾取 | Q放下道具', {
             fontSize: '16px',
             fill: '#ffffff',
             stroke: '#000000',
@@ -219,6 +230,34 @@ function create() {
         stroke: '#000000',
         strokeThickness: 2
     }).setScrollFactor(0).setDepth(100).setOrigin(0.5);
+
+    let hudX = GAME_WIDTH - 20;
+    let hudY = 110;
+    let heldItemPanel = this.add.graphics();
+    heldItemPanel.setScrollFactor(0).setDepth(99);
+    heldItemPanel.fillStyle(0x000000, 0.55);
+    heldItemPanel.fillRoundedRect(hudX - 170, hudY - 5, 170, 50, 10);
+    heldItemPanel.lineStyle(2, 0xff9800, 0.8);
+    heldItemPanel.strokeRoundedRect(hudX - 170, hudY - 5, 170, 50, 10);
+
+    let heldItemLabel = this.add.text(hudX - 160, hudY + 8, '手持:', {
+        fontSize: '13px',
+        fill: '#ffcc80',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setScrollFactor(0).setDepth(100);
+
+    heldItemHud = this.add.text(hudX - 115, hudY + 8, '无 (按E拾取)', {
+        fontSize: '13px',
+        fill: '#9e9e9e',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setScrollFactor(0).setDepth(100);
+
+    heldItemIcon = this.add.graphics();
+    heldItemIcon.setScrollFactor(0).setDepth(100);
 
     gameOverText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, '', {
         fontSize: '64px',
@@ -303,8 +342,8 @@ function showMenu() {
         }).setScrollFactor(0).setDepth(201).setOrigin(0.5);
 
     let controlsText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 130,
-        'WASD/方向键: 移动 | 空格: 喷清洁剂 | Shift: 滑行 | E: 交互/捡道具\n💡 油渍先喷清洁剂 | 面粉先滑行擦 | 糖浆减速 | 水渍加速 | 锅盖可推挡蒸汽', {
-            fontSize: '14px',
+        'WASD: 移动 | 空格: 喷雾 | Shift: 滑行 | E: 拾取 | Q: 放下道具\n🧽 海绵: 滑行+100%伤害 | 💧 清洁剂: 冷却-50% | 🔴 被烫会掉当前手持道具', {
+            fontSize: '13px',
             fill: '#e0e0e0',
             stroke: '#000000',
             strokeThickness: 2,
@@ -337,6 +376,7 @@ function startGame() {
     drawKitchenBackground();
     createLevel(level);
     createPlayer();
+    setHeldItem(ITEM_CLEANER);
     updateUI();
 }
 
@@ -374,7 +414,7 @@ function clearLevel() {
 
     combo = 0;
     comboTimer = 0;
-    heldItem = null;
+    setHeldItem(null);
     onSyrup = false;
     onWaterStain = false;
     onFlour = false;
@@ -383,6 +423,72 @@ function clearLevel() {
     if (backgroundGraphics) backgroundGraphics.clear();
     if (comboText) comboText.setText('');
     if (stainTypeText) stainTypeText.setText('');
+    if (heldItemIcon) heldItemIcon.clear();
+}
+
+function setHeldItem(itemType) {
+    heldItem = itemType;
+
+    if (player && player.heldItemVisual) {
+        player.heldItemVisual.removeAll(true);
+        if (itemType === ITEM_SPONGE) {
+            let scene = game.scene.scenes[0];
+            let spongeVis = scene.add.graphics();
+            spongeVis.fillStyle(0xffb74d, 1);
+            spongeVis.fillRoundedRect(-10, -28, 20, 14, 4);
+            spongeVis.lineStyle(1.5, 0xf57c00, 1);
+            spongeVis.strokeRoundedRect(-10, -28, 20, 14, 4);
+            spongeVis.fillStyle(0xffcc80, 1);
+            spongeVis.fillRoundedRect(-8, -26, 16, 5, 2);
+            player.heldItemVisual.add(spongeVis);
+        } else if (itemType === ITEM_CLEANER) {
+            let scene = game.scene.scenes[0];
+            let cleanerVis = scene.add.graphics();
+            cleanerVis.fillStyle(0x4fc3f7, 1);
+            cleanerVis.fillRoundedRect(-8, -30, 16, 18, 3);
+            cleanerVis.lineStyle(1.5, 0x0288d1, 1);
+            cleanerVis.strokeRoundedRect(-8, -30, 16, 18, 3);
+            cleanerVis.fillStyle(0x607d8b, 1);
+            cleanerVis.fillRect(-3, -36, 6, 6);
+            player.heldItemVisual.add(cleanerVis);
+        }
+    }
+
+    updateHeldItemHud();
+}
+
+function updateHeldItemHud() {
+    if (!heldItemHud || !heldItemIcon) return;
+
+    let hudX = GAME_WIDTH - 20;
+    let hudY = 110;
+
+    if (heldItemIcon) {
+        heldItemIcon.clear();
+    }
+
+    if (heldItem === null) {
+        heldItemHud.setText('无 (按E拾取)');
+        heldItemHud.setFill('#9e9e9e');
+    } else if (heldItem === ITEM_SPONGE) {
+        heldItemHud.setText('海绵 (Q放下)');
+        heldItemHud.setFill('#ffb74d');
+        if (heldItemIcon) {
+            heldItemIcon.fillStyle(0xffb74d, 1);
+            heldItemIcon.fillRoundedRect(hudX - 30, hudY + 2, 20, 14, 4);
+            heldItemIcon.lineStyle(1.5, 0xf57c00, 1);
+            heldItemIcon.strokeRoundedRect(hudX - 30, hudY + 2, 20, 14, 4);
+        }
+    } else if (heldItem === ITEM_CLEANER) {
+        heldItemHud.setText('清洁剂 (Q放下)');
+        heldItemHud.setFill('#4fc3f7');
+        if (heldItemIcon) {
+            heldItemIcon.fillStyle(0x4fc3f7, 1);
+            heldItemIcon.fillRoundedRect(hudX - 28, hudY, 16, 18, 3);
+            heldItemIcon.lineStyle(1.5, 0x0288d1, 1);
+            heldItemIcon.strokeRoundedRect(hudX - 28, hudY, 16, 18, 3);
+        }
+    }
 }
 
 function createLevel(levelNum) {
@@ -600,9 +706,13 @@ function createPlayer() {
     sprayNozzle.fillStyle(0x455a64, 1);
     sprayNozzle.fillRect(25, -3, 6, 6);
 
-    player.add([body, helmet, eye1, eye2, smile, sprayNozzle]);
+    let heldItemVisual = scene.add.container(0, 0);
+    heldItemVisual.setDepth(1);
+
+    player.add([body, helmet, eye1, eye2, smile, sprayNozzle, heldItemVisual]);
     player.bodyGraphics = body;
     player.sprayNozzle = sprayNozzle;
+    player.heldItemVisual = heldItemVisual;
 
     player.direction = new Phaser.Math.Vector2(1, 0);
     player.vx = 0;
@@ -1575,6 +1685,13 @@ function updatePlayer(dt) {
         tryInteract();
     }
 
+    if (Phaser.Input.Keyboard.JustDown(keys.Q)) {
+        if (heldItem !== null) {
+            dropHeldItem();
+            createScorePopup(player.x, player.y - 30, '放下道具');
+        }
+    }
+
     checkSteamDaredevil();
 }
 
@@ -1607,7 +1724,11 @@ function updateSpray(dt) {
     }
 
     if (Phaser.Input.Keyboard.JustDown(keys.SPACE) && sprayCooldown <= 0) {
-        sprayCooldown = 0.3;
+        let baseCooldown = 0.3;
+        if (heldItem === ITEM_CLEANER) {
+            baseCooldown = 0.15;
+        }
+        sprayCooldown = baseCooldown;
         createSprayParticles();
     }
 
@@ -1630,14 +1751,29 @@ function updateSpray(dt) {
 function createSprayParticles() {
     let scene = game.scene.scenes[0];
 
-    for (let i = 0; i < 8; i++) {
+    let particleCount = 8;
+    let particleFill = 0x4fc3f7;
+    let particleAlpha = 0.8;
+    let particleSize = 6;
+    let speedBase = 400;
+    let speedRange = 200;
+
+    if (heldItem === ITEM_CLEANER) {
+        particleCount = 12;
+        particleSize = 7;
+        particleAlpha = 0.9;
+        speedBase = 450;
+        speedRange = 250;
+    }
+
+    for (let i = 0; i < particleCount; i++) {
         let particle = scene.add.graphics();
-        particle.fillStyle(0x4fc3f7, 0.8);
-        particle.fillCircle(0, 0, 6);
+        particle.fillStyle(particleFill, particleAlpha);
+        particle.fillCircle(0, 0, particleSize);
         particle.setDepth(45);
 
         let angle = player.direction.angle() + (Math.random() - 0.5) * 0.6;
-        let speed = 400 + Math.random() * 200;
+        let speed = speedBase + Math.random() * speedRange;
 
         particle.x = player.x + player.direction.x * 25;
         particle.y = player.y + player.direction.y * 25;
@@ -1707,13 +1843,23 @@ function updateCollisions(dt) {
     onFlour = false;
     let currentStainType = '';
 
+    let sprayDamage = 0.3;
+    if (heldItem === ITEM_CLEANER) {
+        sprayDamage = 0.45;
+    }
+
+    let slideDamage = 0.5;
+    if (heldItem === ITEM_SPONGE) {
+        slideDamage = 1.0;
+    }
+
     for (let i = stains.length - 1; i >= 0; i--) {
         let stain = stains[i];
         for (let j = sprayParticles.length - 1; j >= 0; j--) {
             let particle = sprayParticles[j];
             let dist = Phaser.Math.Distance.Between(particle.x, particle.y, stain.x, stain.y);
             if (dist < stain.size) {
-                hitStain(stain, 0.3, true, false);
+                hitStain(stain, sprayDamage, true, false);
                 particle.destroy();
                 sprayParticles.splice(j, 1);
             }
@@ -1742,9 +1888,9 @@ function updateCollisions(dt) {
                         stain.warningText.setText('干粉已擦');
                         stain.warningText.setFill('#4caf50');
                     }
-                    hitStain(stain, 0.5, false, true);
+                    hitStain(stain, slideDamage, false, true);
                 } else {
-                    hitStain(stain, 0.5, false, true);
+                    hitStain(stain, slideDamage, false, true);
                 }
             }
         }
@@ -2105,8 +2251,13 @@ function takeDamage(sourceX, sourceY, isBurn = false) {
         combo = 0;
         comboTimer = 0;
         if (comboText) comboText.setText('');
+        let hadItem = heldItem !== null;
         dropHeldItem();
-        createScorePopup(player.x, player.y - 60, '连击中断! 道具掉落!');
+        if (hadItem) {
+            createScorePopup(player.x, player.y - 60, '连击中断! 道具掉落!');
+        } else {
+            createScorePopup(player.x, player.y - 60, '连击中断!');
+        }
     }
 
     let scene = game.scene.scenes[0];
@@ -2136,11 +2287,17 @@ function hitBySteam(sourceX, sourceY) {
 }
 
 function dropHeldItem() {
-    if (sponges.length > 0) {
-        let scene = game.scene.scenes[0];
-        let dropItem = scene.add.container(player.x, player.y);
-        dropItem.setDepth(45);
+    if (heldItem === null) return;
 
+    let scene = game.scene.scenes[0];
+    let dropItem = scene.add.container(player.x, player.y);
+    dropItem.setDepth(45);
+
+    let itemType = heldItem;
+    let labelText = '';
+    let labelColor = '';
+
+    if (itemType === ITEM_SPONGE) {
         let body = scene.add.graphics();
         body.fillStyle(0xffb74d, 1);
         body.fillRoundedRect(-20, -14, 40, 28, 6);
@@ -2152,25 +2309,52 @@ function dropHeldItem() {
         top.fillRoundedRect(-18, -12, 36, 8, 3);
 
         dropItem.add([body, top]);
-        dropItem.vx = (Math.random() - 0.5) * 200;
-        dropItem.vy = -150 - Math.random() * 100;
-        dropItem.life = 8;
-        dropItem.radius = 20;
-        dropItem.type = 'sponge';
+        dropItem.type = ITEM_SPONGE;
+        labelText = '掉落的海绵 (按E拾取)';
+        labelColor = '#ffb74d';
+    } else if (itemType === ITEM_CLEANER) {
+        let body = scene.add.graphics();
+        body.fillStyle(0x4fc3f7, 1);
+        body.fillRoundedRect(-16, -22, 32, 44, 6);
+        body.lineStyle(2, 0x0288d1, 1);
+        body.strokeRoundedRect(-16, -22, 32, 44, 6);
 
-        let label = scene.add.text(0, 25, '掉落的海绵 (E捡起)', {
-            fontSize: '11px',
-            fill: '#ffb74d',
-            fontStyle: 'bold',
-            stroke: '#000000',
-            strokeThickness: 2
-        }).setOrigin(0.5);
-        dropItem.add(label);
+        let label = scene.add.graphics();
+        label.fillStyle(0xe1f5fe, 1);
+        label.fillRoundedRect(-12, -10, 24, 18, 2);
 
-        droppedItems.push(dropItem);
+        let nozzle = scene.add.graphics();
+        nozzle.fillStyle(0x607d8b, 1);
+        nozzle.fillRect(-6, -30, 12, 8);
+        nozzle.fillStyle(0x455a64, 1);
+        nozzle.fillRect(-3, -36, 6, 6);
 
-        createScorePopup(player.x, player.y - 50, '海绵掉落!');
+        dropItem.add([body, label, nozzle]);
+        dropItem.type = ITEM_CLEANER;
+        labelText = '掉落的清洁剂 (按E拾取)';
+        labelColor = '#4fc3f7';
     }
+
+    dropItem.vx = (Math.random() - 0.5) * 200;
+    dropItem.vy = -150 - Math.random() * 100;
+    dropItem.life = 12;
+    dropItem.radius = 22;
+
+    let label = scene.add.text(0, 35, labelText, {
+        fontSize: '11px',
+        fill: labelColor,
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setOrigin(0.5);
+    dropItem.add(label);
+
+    droppedItems.push(dropItem);
+
+    let info = ITEM_INFO[itemType];
+    createScorePopup(player.x, player.y - 50, `${info ? info.name : '道具'}掉落!`);
+
+    setHeldItem(null);
 }
 
 function updateDroppedItems(dt) {
@@ -2269,15 +2453,24 @@ function tryInteract() {
     for (let i = droppedItems.length - 1; i >= 0; i--) {
         let item = droppedItems[i];
         let dist = Phaser.Math.Distance.Between(player.x, player.y, item.x, item.y);
+        if (dist < 55) {
+            pickupItem(item.type, item, i);
+            return;
+        }
+    }
+
+    for (let i = sponges.length - 1; i >= 0; i--) {
+        let sponge = sponges[i];
+        let dist = Phaser.Math.Distance.Between(player.x, player.y, sponge.x, sponge.y);
         if (dist < 50) {
-            if (item.type === 'sponge') {
-                let scene = game.scene.scenes[0];
-                let newSponge = createSponge(item.x, item.y);
-                item.destroy();
-                droppedItems.splice(i, 1);
-                createScorePopup(player.x, player.y - 30, '捡起海绵!');
-                return;
+            if (heldItem !== null) {
+                dropHeldItem();
             }
+            setHeldItem(ITEM_SPONGE);
+            sponge.destroy();
+            sponges.splice(i, 1);
+            createScorePopup(player.x, player.y - 30, '拾取海绵! 清洁效果+100%');
+            return;
         }
     }
 
@@ -2289,6 +2482,23 @@ function tryInteract() {
             return;
         }
     }
+}
+
+function pickupItem(itemType, sourceItem = null, sourceIndex = -1) {
+    if (heldItem !== null) {
+        dropHeldItem();
+    }
+
+    setHeldItem(itemType);
+
+    if (sourceItem && sourceIndex >= 0) {
+        sourceItem.destroy();
+        droppedItems.splice(sourceIndex, 1);
+    }
+
+    let info = ITEM_INFO[itemType];
+    let desc = info ? info.desc : '';
+    createScorePopup(player.x, player.y - 30, `拾取${info ? info.name : '道具'}! ${desc}`);
 }
 
 function checkSteamDaredevil() {
@@ -2411,6 +2621,7 @@ function nextLevel() {
     drawKitchenBackground();
     createLevel(level);
     createPlayer();
+    setHeldItem(ITEM_CLEANER);
     playerVelocity = new Phaser.Math.Vector2();
 }
 
