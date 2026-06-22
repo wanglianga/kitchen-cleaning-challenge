@@ -3,6 +3,24 @@ const GAME_HEIGHT = 800;
 const PLAYER_SPEED = 280;
 const PLAYER_SLIDE_SPEED = 500;
 const WATER_BOOST_SPEED = 600;
+const SYRUP_SLOW_SPEED = 140;
+const WATER_STAIN_SLIDE_SPEED = 700;
+
+const STAIN_NORMAL = 'normal';
+const STAIN_STUBBORN = 'stubborn';
+const STAIN_OIL = 'oil';
+const STAIN_SYRUP = 'syrup';
+const STAIN_FLOUR = 'flour';
+const STAIN_WATER = 'water';
+
+const STAIN_COLORS = {
+    [STAIN_NORMAL]: { fill: 0x8d6e63, alpha: 0.6, name: '普通污渍' },
+    [STAIN_STUBBORN]: { fill: 0x5d4037, alpha: 0.9, name: '顽固污渍' },
+    [STAIN_OIL]: { fill: 0x6d4c41, alpha: 0.85, name: '油渍' },
+    [STAIN_SYRUP]: { fill: 0xfbc02d, alpha: 0.9, name: '糖浆' },
+    [STAIN_FLOUR]: { fill: 0xeceff1, alpha: 0.95, name: '面粉' },
+    [STAIN_WATER]: { fill: 0x4fc3f7, alpha: 0.5, name: '水渍' }
+};
 
 let gameConfig = {
     type: Phaser.AUTO,
@@ -24,6 +42,8 @@ let keys = {};
 let stains = [];
 let sponges = [];
 let hotPans = [];
+let potLids = [];
+let steamBursts = [];
 let waterStreams = [];
 let crumbs = [];
 let collectPoints = [];
@@ -32,11 +52,17 @@ let drippingFaucets = [];
 let soapBubbles = [];
 let utensils = [];
 let utensilRacks = [];
+let droppedItems = [];
+let comboText;
+let stainTypeText;
 
 let score = 0;
 let timeLeft = 90;
 let level = 1;
 let gameState = 'menu';
+let combo = 0;
+let comboTimer = 0;
+let maxCombo = 0;
 let scoreText;
 let timeText;
 let levelText;
@@ -59,6 +85,7 @@ let levelTotalCrumbs = 0;
 let levelTotalFaucets = 0;
 let levelTotalUtensils = 0;
 let levelTotalDishes = 0;
+let levelTotalPots = 0;
 
 let playerVelocity = new Phaser.Math.Vector2();
 let isSliding = false;
@@ -70,6 +97,11 @@ let invincible = false;
 let invincibleTimer = 0;
 let onWaterStream = false;
 let waterBoostTimer = 0;
+let onSyrup = false;
+let syrupSlowTimer = 0;
+let onWaterStain = false;
+let onFlour = false;
+let heldItem = null;
 
 let lastTime = 0;
 
@@ -116,7 +148,7 @@ function create() {
     }).setScrollFactor(0).setDepth(100);
 
     hintText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 40,
-        'WASD/方向键移动 | 空格喷清洁剂 | Shift滑行 | E交互', {
+        'WASD/方向键移动 | 空格喷清洁剂 | Shift滑行 | E交互/捡道具', {
             fontSize: '16px',
             fill: '#ffffff',
             stroke: '#000000',
@@ -172,6 +204,21 @@ function create() {
         stroke: '#000000',
         strokeThickness: 2
     }).setScrollFactor(0).setDepth(100);
+
+    comboText = this.add.text(GAME_WIDTH - 20, 60, '', {
+        fontSize: '28px',
+        fill: '#ffeb3b',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 4
+    }).setScrollFactor(0).setDepth(100).setOrigin(1, 0);
+
+    stainTypeText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 75, '', {
+        fontSize: '14px',
+        fill: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setScrollFactor(0).setDepth(100).setOrigin(0.5);
 
     gameOverText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, '', {
         fontSize: '64px',
@@ -237,7 +284,16 @@ function showMenu() {
             align: 'center'
         }).setScrollFactor(0).setDepth(201).setOrigin(0.5);
 
-    let startText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 60,
+    let featuresText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 10,
+        '💧 多种污渍 | 🔥 热锅蒸汽 | 🛡️ 锅盖屏障 | ⚡ 连击系统', {
+            fontSize: '14px',
+            fill: '#b3e5fc',
+            stroke: '#000000',
+            strokeThickness: 2,
+            align: 'center'
+        }).setScrollFactor(0).setDepth(201).setOrigin(0.5);
+
+    let startText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 70,
         '按 回车键 开始游戏', {
             fontSize: '28px',
             fill: '#ffeb3b',
@@ -246,16 +302,16 @@ function showMenu() {
             strokeThickness: 4
         }).setScrollFactor(0).setDepth(201).setOrigin(0.5);
 
-    let controlsText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 120,
-        'WASD/方向键: 移动 | 空格: 喷清洁剂\nShift: 滑行 | E: 交互', {
-            fontSize: '16px',
+    let controlsText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 130,
+        'WASD/方向键: 移动 | 空格: 喷清洁剂 | Shift: 滑行 | E: 交互/捡道具\n💡 油渍先喷清洁剂 | 面粉先滑行擦 | 糖浆减速 | 水渍加速 | 锅盖可推挡蒸汽', {
+            fontSize: '14px',
             fill: '#e0e0e0',
             stroke: '#000000',
             strokeThickness: 2,
             align: 'center'
         }).setScrollFactor(0).setDepth(201).setOrigin(0.5);
 
-    scene.menuTexts = [title, desc, startText, controlsText];
+    scene.menuTexts = [title, desc, featuresText, startText, controlsText];
 }
 
 function hideMenu() {
@@ -291,6 +347,10 @@ function clearLevel() {
     sponges = [];
     hotPans.forEach(p => p.destroy());
     hotPans = [];
+    potLids.forEach(l => l.destroy());
+    potLids = [];
+    steamBursts.forEach(s => s.destroy());
+    steamBursts = [];
     waterStreams.forEach(w => w.destroy());
     waterStreams = [];
     crumbs.forEach(c => c.destroy());
@@ -307,11 +367,22 @@ function clearLevel() {
     utensils = [];
     utensilRacks.forEach(r => r.destroy());
     utensilRacks = [];
+    droppedItems.forEach(i => i.destroy());
+    droppedItems = [];
     sprayParticles.forEach(p => p.destroy());
     sprayParticles = [];
 
+    combo = 0;
+    comboTimer = 0;
+    heldItem = null;
+    onSyrup = false;
+    onWaterStain = false;
+    onFlour = false;
+
     if (player) player.destroy();
     if (backgroundGraphics) backgroundGraphics.clear();
+    if (comboText) comboText.setText('');
+    if (stainTypeText) stainTypeText.setText('');
 }
 
 function createLevel(levelNum) {
@@ -322,18 +393,22 @@ function createLevel(levelNum) {
     let numFragile = 2 + levelNum;
     let numFaucets = 1 + Math.floor(levelNum / 2);
     let numSponges = 2;
+    let numPotLids = Math.max(1, Math.floor(levelNum / 2));
 
     let counterLeft = 80;
     let counterRight = GAME_WIDTH - 80;
     let counterTop = 120;
     let counterBottom = GAME_HEIGHT - 120;
 
+    let stainTypes = [STAIN_NORMAL, STAIN_STUBBORN, STAIN_OIL, STAIN_SYRUP, STAIN_FLOUR, STAIN_WATER];
+    let stainWeights = [25, 15, 20, 15, 15, 10];
+
     for (let i = 0; i < numStains; i++) {
         let x = Phaser.Math.Between(counterLeft + 50, counterRight - 50);
         let y = Phaser.Math.Between(counterTop + 50, counterBottom - 50);
-        let size = Phaser.Math.Between(30, 60);
-        let stubborn = Math.random() < 0.3;
-        createStain(x, y, size, stubborn);
+        let size = Phaser.Math.Between(35, 65);
+        let type = getWeightedRandom(stainTypes, stainWeights);
+        createStain(x, y, size, type);
     }
 
     for (let i = 0; i < numSponges; i++) {
@@ -343,9 +418,15 @@ function createLevel(levelNum) {
     }
 
     for (let i = 0; i < numHotPans; i++) {
+        let x = Phaser.Math.Between(counterLeft + 120, counterRight - 120);
+        let y = Phaser.Math.Between(counterTop + 120, counterBottom - 120);
+        createHotPan(x, y);
+    }
+
+    for (let i = 0; i < numPotLids; i++) {
         let x = Phaser.Math.Between(counterLeft + 100, counterRight - 100);
         let y = Phaser.Math.Between(counterTop + 100, counterBottom - 100);
-        createHotPan(x, y);
+        createPotLid(x, y);
     }
 
     for (let i = 0; i < numWaterStreams; i++) {
@@ -402,6 +483,17 @@ function createLevel(levelNum) {
     levelTotalFaucets = drippingFaucets.length;
     levelTotalUtensils = utensils.length;
     levelTotalDishes = fragileDishes.length;
+    levelTotalPots = hotPans.length;
+}
+
+function getWeightedRandom(items, weights) {
+    let total = weights.reduce((a, b) => a + b, 0);
+    let random = Math.random() * total;
+    for (let i = 0; i < items.length; i++) {
+        random -= weights[i];
+        if (random <= 0) return items[i];
+    }
+    return items[0];
 }
 
 function drawKitchenBackground() {
@@ -517,45 +609,116 @@ function createPlayer() {
     player.vy = 0;
 }
 
-function createStain(x, y, size, stubborn) {
+function createStain(x, y, size, type) {
     let scene = game.scene.scenes[0];
     let stain = scene.add.container(x, y);
     stain.setDepth(5);
 
+    let colorInfo = STAIN_COLORS[type] || STAIN_COLORS[STAIN_NORMAL];
     let graphics = scene.add.graphics();
-    let color = stubborn ? 0x5d4037 : 0x8d6e63;
-    let alpha = stubborn ? 0.9 : 0.6;
 
-    graphics.fillStyle(color, alpha);
+    graphics.fillStyle(colorInfo.fill, colorInfo.alpha);
     for (let i = 0; i < 5; i++) {
         let angle = (Math.PI * 2 / 5) * i + Math.random() * 0.5;
         let dist = size * 0.3 + Math.random() * size * 0.4;
         let blobSize = size * 0.4 + Math.random() * size * 0.3;
         graphics.fillCircle(Math.cos(angle) * dist, Math.sin(angle) * dist, blobSize);
     }
-
     graphics.fillCircle(0, 0, size * 0.5);
 
-    if (stubborn) {
+    if (type === STAIN_OIL) {
+        let shine = scene.add.graphics();
+        shine.fillStyle(0xffffff, 0.3);
+        for (let i = 0; i < 3; i++) {
+            let angle = Math.random() * Math.PI * 2;
+            let dist = size * 0.2 + Math.random() * size * 0.2;
+            shine.fillEllipse(Math.cos(angle) * dist, Math.sin(angle) * dist, 8, 4, angle);
+        }
+        stain.add(shine);
+    }
+
+    if (type === STAIN_SYRUP) {
+        let bubble = scene.add.graphics();
+        bubble.fillStyle(0xfff176, 0.6);
+        for (let i = 0; i < 4; i++) {
+            let angle = Math.random() * Math.PI * 2;
+            let dist = size * 0.1 + Math.random() * size * 0.3;
+            bubble.fillCircle(Math.cos(angle) * dist, Math.sin(angle) * dist, 4 + Math.random() * 4);
+        }
+        stain.add(bubble);
+    }
+
+    if (type === STAIN_FLOUR) {
+        let powder = scene.add.graphics();
+        powder.fillStyle(0xffffff, 0.8);
+        for (let i = 0; i < 8; i++) {
+            let angle = Math.random() * Math.PI * 2;
+            let dist = size * 0.1 + Math.random() * size * 0.35;
+            powder.fillCircle(Math.cos(angle) * dist, Math.sin(angle) * dist, 2 + Math.random() * 3);
+        }
+        stain.add(powder);
+    }
+
+    if (type === STAIN_WATER) {
+        let ripple = scene.add.graphics();
+        ripple.lineStyle(1.5, 0xffffff, 0.4);
+        for (let i = 0; i < 3; i++) {
+            ripple.strokeCircle(0, 0, size * 0.3 + i * size * 0.15);
+        }
+        stain.add(ripple);
+    }
+
+    let labelText = '';
+    let labelColor = '#ffffff';
+    if (type === STAIN_STUBBORN) {
+        labelText = '顽固!';
+        labelColor = '#ff5722';
         let highlight = scene.add.graphics();
         highlight.lineStyle(2, 0xff5722, 0.8);
         highlight.strokeCircle(0, 0, size * 0.7);
+        stain.add(highlight);
+    } else if (type === STAIN_OIL) {
+        labelText = '油渍';
+        labelColor = '#8d6e63';
+    } else if (type === STAIN_SYRUP) {
+        labelText = '糖浆';
+        labelColor = '#fbc02d';
+    } else if (type === STAIN_FLOUR) {
+        labelText = '面粉';
+        labelColor = '#90a4ae';
+    } else if (type === STAIN_WATER) {
+        labelText = '水渍';
+        labelColor = '#4fc3f7';
+    }
 
-        let warning = scene.add.text(0, -size - 10, '顽固!', {
+    if (labelText) {
+        let warning = scene.add.text(0, -size - 10, labelText, {
             fontSize: '12px',
-            fill: '#ff5722',
-            fontStyle: 'bold'
+            fill: labelColor,
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
         }).setOrigin(0.5);
-        stain.add([highlight, warning]);
+        stain.add(warning);
         stain.warningText = warning;
     }
 
     stain.add(graphics);
     stain.graphics = graphics;
     stain.size = size;
-    stain.stubborn = stubborn;
-    stain.health = stubborn ? 3 : 1;
-    stain.maxHealth = stain.health;
+    stain.type = type;
+    stain.softened = false;
+    stain.wetted = false;
+    stain.expanded = false;
+
+    let baseHealth = 1;
+    if (type === STAIN_STUBBORN) baseHealth = 3;
+    else if (type === STAIN_OIL) baseHealth = 2;
+    else if (type === STAIN_SYRUP) baseHealth = 2;
+    else if (type === STAIN_FLOUR) baseHealth = 2;
+
+    stain.health = baseHealth;
+    stain.maxHealth = baseHealth;
 
     stains.push(stain);
     return stain;
@@ -632,6 +795,10 @@ function createHotPan(x, y) {
         flames.fill();
     }
 
+    let steamZone = scene.add.graphics();
+    steamZone.fillStyle(0xffffff, 0);
+    steamZone.fillCircle(0, 0, 80);
+
     let warning = scene.add.text(0, -60, '⚠ 热锅 ⚠', {
         fontSize: '14px',
         fill: '#ff5722',
@@ -640,10 +807,25 @@ function createHotPan(x, y) {
         strokeThickness: 2
     }).setOrigin(0.5);
 
-    pan.add([panBody, inner, handle, heat, flames, warning]);
+    let timerText = scene.add.text(0, 60, '', {
+        fontSize: '16px',
+        fill: '#ff9800',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setOrigin(0.5);
+
+    pan.add([panBody, inner, handle, heat, flames, steamZone, warning, timerText]);
     pan.heat = heat;
     pan.flames = flames;
+    pan.steamZone = steamZone;
     pan.warningText = warning;
+    pan.timerText = timerText;
+    pan.steamTimer = 0;
+    pan.steamInterval = Phaser.Math.Between(4, 7);
+    pan.steamDuration = 2;
+    pan.isSteaming = false;
+    pan.steamParticles = [];
 
     scene.tweens.add({
         targets: heat,
@@ -655,6 +837,210 @@ function createHotPan(x, y) {
 
     hotPans.push(pan);
     return pan;
+}
+
+function createPotLid(x, y) {
+    let scene = game.scene.scenes[0];
+    let lid = scene.add.container(x, y);
+    lid.setDepth(25);
+    lid.radius = 40;
+
+    let lidBody = scene.add.graphics();
+    lidBody.fillStyle(0x78909c, 1);
+    lidBody.fillCircle(0, 0, 40);
+    lidBody.lineStyle(3, 0x455a64, 1);
+    lidBody.strokeCircle(0, 0, 40);
+
+    let lidTop = scene.add.graphics();
+    lidTop.fillStyle(0x90a4ae, 1);
+    lidTop.fillCircle(0, 0, 32);
+
+    let handle = scene.add.graphics();
+    handle.fillStyle(0xff9800, 1);
+    handle.fillCircle(0, 0, 10);
+    handle.lineStyle(2, 0xf57c00, 1);
+    handle.strokeCircle(0, 0, 10);
+
+    let shine = scene.add.graphics();
+    shine.fillStyle(0xffffff, 0.4);
+    shine.beginPath();
+    shine.arc(-15, -15, 12, 0, Math.PI);
+    shine.fill();
+
+    let label = scene.add.text(0, 55, '锅盖 (可推动)', {
+        fontSize: '12px',
+        fill: '#90a4ae',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setOrigin(0.5);
+
+    lid.add([lidBody, lidTop, handle, shine, label]);
+    lid.vx = 0;
+    lid.vy = 0;
+    lid.isBarrier = false;
+    lid.barrierTimer = 0;
+
+    potLids.push(lid);
+    return lid;
+}
+
+function createSteamBurst(pan) {
+    let scene = game.scene.scenes[0];
+    let steam = scene.add.container(pan.x, pan.y);
+    steam.setDepth(15);
+
+    let particles = [];
+    for (let i = 0; i < 15; i++) {
+        let particle = scene.add.graphics();
+        let size = Phaser.Math.Between(15, 30);
+        particle.fillStyle(0xffffff, 0.4);
+        particle.fillCircle(0, 0, size);
+        particle.alpha = 0;
+        particle.baseSize = size;
+        particles.push(particle);
+        steam.add(particle);
+    }
+
+    steam.particles = particles;
+    steam.radius = 80;
+    steam.duration = 2;
+    steam.life = 2;
+    steam.pan = pan;
+
+    scene.tweens.add({
+        targets: steam,
+        scaleX: { from: 0.5, to: 1.2 },
+        scaleY: { from: 0.5, to: 1.2 },
+        duration: 2000,
+        ease: 'Cubic.easeOut'
+    });
+
+    steamBursts.push(steam);
+    return steam;
+}
+
+function updateHotPans(dt) {
+    for (let pan of hotPans) {
+        pan.steamTimer += dt;
+
+        if (pan.isSteaming) {
+            let timeLeft = pan.steamDuration - (pan.steamTimer % pan.steamInterval);
+            if (pan.timerText) {
+                pan.timerText.setText(`蒸汽中 ${timeLeft.toFixed(1)}s`);
+                pan.timerText.setFill('#4fc3f7');
+            }
+
+            if (pan.steamTimer >= pan.steamDuration) {
+                pan.isSteaming = false;
+                pan.steamTimer = 0;
+                if (pan.steamZone) {
+                    pan.steamZone.fillStyle(0xffffff, 0);
+                    pan.steamZone.clear();
+                    pan.steamZone.fillStyle(0xffffff, 0);
+                    pan.steamZone.fillCircle(0, 0, 80);
+                }
+            }
+        } else {
+            let timeToSteam = pan.steamInterval - pan.steamTimer;
+            if (pan.timerText) {
+                if (timeToSteam <= 1.5) {
+                    pan.timerText.setText(`⚠ 即将喷汽 ${timeToSteam.toFixed(1)}s`);
+                    pan.timerText.setFill('#ff5722');
+                } else {
+                    pan.timerText.setText(`下一次喷汽 ${timeToSteam.toFixed(1)}s`);
+                    pan.timerText.setFill('#ff9800');
+                }
+            }
+
+            if (timeToSteam <= 0) {
+                pan.isSteaming = true;
+                pan.steamTimer = 0;
+                createSteamBurst(pan);
+
+                if (pan.steamZone) {
+                    pan.steamZone.fillStyle(0xffffff, 0.25);
+                    pan.steamZone.clear();
+                    pan.steamZone.fillStyle(0xffffff, 0.25);
+                    pan.steamZone.fillCircle(0, 0, 80);
+                }
+
+                if (pan.warningText) {
+                    pan.warningText.setText('💨 蒸汽! 💨');
+                    pan.warningText.setFill('#4fc3f7');
+                }
+
+                let scene = game.scene.scenes[0];
+                scene.time.delayedCall(2000, () => {
+                    if (pan.warningText && pan.active) {
+                        pan.warningText.setText('⚠ 热锅 ⚠');
+                        pan.warningText.setFill('#ff5722');
+                    }
+                });
+            }
+        }
+    }
+}
+
+function updateSteamBursts(dt) {
+    for (let i = steamBursts.length - 1; i >= 0; i--) {
+        let steam = steamBursts[i];
+        steam.life -= dt;
+
+        let alpha = steam.life / steam.duration;
+        for (let j = 0; j < steam.particles.length; j++) {
+            let particle = steam.particles[j];
+            particle.alpha = alpha * 0.5;
+            let offset = (steam.duration - steam.life) * 50;
+            particle.x = Math.cos(j * 0.8) * offset;
+            particle.y = Math.sin(j * 0.8) * offset - (steam.duration - steam.life) * 30;
+            particle.scaleX = 1 + (steam.duration - steam.life) * 0.5;
+            particle.scaleY = 1 + (steam.duration - steam.life) * 0.5;
+        }
+
+        if (steam.life <= 0) {
+            steam.destroy();
+            steamBursts.splice(i, 1);
+        }
+    }
+}
+
+function updatePotLids(dt) {
+    for (let lid of potLids) {
+        lid.x += lid.vx * dt;
+        lid.y += lid.vy * dt;
+        lid.vx *= 0.9;
+        lid.vy *= 0.9;
+
+        if (lid.isBarrier) {
+            lid.barrierTimer -= dt;
+            if (lid.barrierTimer <= 0) {
+                lid.isBarrier = false;
+            }
+        }
+
+        let counterLeft = 80;
+        let counterRight = GAME_WIDTH - 80;
+        let counterTop = 120;
+        let counterBottom = GAME_HEIGHT - 120;
+
+        if (lid.x < counterLeft + 40) {
+            lid.x = counterLeft + 40;
+            lid.vx *= -0.5;
+        }
+        if (lid.x > counterRight - 40) {
+            lid.x = counterRight - 40;
+            lid.vx *= -0.5;
+        }
+        if (lid.y < counterTop + 40) {
+            lid.y = counterTop + 40;
+            lid.vy *= -0.5;
+        }
+        if (lid.y > counterBottom - 40) {
+            lid.y = counterBottom - 40;
+            lid.vy *= -0.5;
+        }
+    }
 }
 
 function createWaterStream(x, y, horizontal) {
@@ -1085,6 +1471,10 @@ function update(time, delta) {
     updateSponges(dt);
     updateCrumbs(dt);
     updateUtensils(dt);
+    updateHotPans(dt);
+    updateSteamBursts(dt);
+    updatePotLids(dt);
+    updateDroppedItems(dt);
     updateCollisions(dt);
     updateSoapBubbles(time);
     updateUI();
@@ -1111,9 +1501,22 @@ function updatePlayer(dt) {
         currentSpeed = WATER_BOOST_SPEED;
     }
 
+    if (syrupSlowTimer > 0) {
+        syrupSlowTimer -= dt;
+        currentSpeed = SYRUP_SLOW_SPEED;
+    }
+
+    if (onWaterStain && !isSliding) {
+        currentSpeed = PLAYER_SPEED * 1.2;
+    }
+
     if (isSliding && slideTimer > 0) {
         slideTimer -= dt;
-        currentSpeed = PLAYER_SLIDE_SPEED;
+        if (onWaterStain) {
+            currentSpeed = WATER_STAIN_SLIDE_SPEED;
+        } else {
+            currentSpeed = PLAYER_SLIDE_SPEED;
+        }
         player.vx = slideDirection.x * currentSpeed;
         player.vy = slideDirection.y * currentSpeed;
     } else if (Phaser.Input.Keyboard.JustDown(keys.SHIFT) && input.length() > 0) {
@@ -1152,6 +1555,14 @@ function updatePlayer(dt) {
         }
     }
 
+    if (comboTimer > 0) {
+        comboTimer -= dt;
+        if (comboTimer <= 0 && combo > 0) {
+            combo = 0;
+            if (comboText) comboText.setText('');
+        }
+    }
+
     let counterLeft = 80;
     let counterRight = GAME_WIDTH - 80;
     let counterTop = 120;
@@ -1163,6 +1574,8 @@ function updatePlayer(dt) {
     if (Phaser.Input.Keyboard.JustDown(keys.E)) {
         tryInteract();
     }
+
+    checkSteamDaredevil();
 }
 
 function createSlideEffect() {
@@ -1289,22 +1702,56 @@ function updateUtensils(dt) {
 }
 
 function updateCollisions(dt) {
+    onSyrup = false;
+    onWaterStain = false;
+    onFlour = false;
+    let currentStainType = '';
+
     for (let i = stains.length - 1; i >= 0; i--) {
         let stain = stains[i];
         for (let j = sprayParticles.length - 1; j >= 0; j--) {
             let particle = sprayParticles[j];
             let dist = Phaser.Math.Distance.Between(particle.x, particle.y, stain.x, stain.y);
             if (dist < stain.size) {
-                hitStain(stain, 0.3);
+                hitStain(stain, 0.3, true, false);
                 particle.destroy();
                 sprayParticles.splice(j, 1);
             }
         }
 
         let playerDist = Phaser.Math.Distance.Between(player.x, player.y, stain.x, stain.y);
-        if (playerDist < stain.size + 15 && isSliding) {
-            hitStain(stain, 0.5);
+        if (playerDist < stain.size + 15) {
+            if (stain.type === STAIN_SYRUP) {
+                onSyrup = true;
+                syrupSlowTimer = 0.3;
+                currentStainType = '糖浆黏住! 移动减速';
+            }
+            if (stain.type === STAIN_WATER) {
+                onWaterStain = true;
+                currentStainType = '水渍滑行! 速度提升';
+            }
+            if (stain.type === STAIN_FLOUR && !stain.wetted) {
+                onFlour = true;
+                currentStainType = '面粉! 滑行可擦除干粉';
+            }
+
+            if (isSliding) {
+                if (stain.type === STAIN_FLOUR && !stain.wetted) {
+                    stain.wetted = true;
+                    if (stain.warningText) {
+                        stain.warningText.setText('干粉已擦');
+                        stain.warningText.setFill('#4caf50');
+                    }
+                    hitStain(stain, 0.5, false, true);
+                } else {
+                    hitStain(stain, 0.5, false, true);
+                }
+            }
         }
+    }
+
+    if (stainTypeText) {
+        stainTypeText.setText(currentStainType);
     }
 
     for (let sponge of sponges) {
@@ -1318,7 +1765,7 @@ function updateCollisions(dt) {
                 let stain = stains[i];
                 let stainDist = Phaser.Math.Distance.Between(sponge.x, sponge.y, stain.x, stain.y);
                 if (stainDist < stain.size + 25) {
-                    hitStain(stain, 0.8);
+                    hitStain(stain, 0.8, false, true);
                 }
             }
         }
@@ -1328,8 +1775,48 @@ function updateCollisions(dt) {
         for (let pan of hotPans) {
             let dist = Phaser.Math.Distance.Between(player.x, player.y, pan.x, pan.y);
             if (dist < 50) {
-                takeDamage(pan.x, pan.y);
+                takeDamage(pan.x, pan.y, true);
                 break;
+            }
+        }
+
+        for (let steam of steamBursts) {
+            let dist = Phaser.Math.Distance.Between(player.x, player.y, steam.x, steam.y);
+            if (dist < 80) {
+                hitBySteam(steam.x, steam.y);
+                break;
+            }
+        }
+    }
+
+    for (let lid of potLids) {
+        let dist = Phaser.Math.Distance.Between(player.x, player.y, lid.x, lid.y);
+        if (dist < 50) {
+            let pushDir = new Phaser.Math.Vector2(lid.x - player.x, lid.y - player.y).normalize();
+            lid.vx = pushDir.x * 300;
+            lid.vy = pushDir.y * 300;
+
+            if (isSliding) {
+                lid.isBarrier = true;
+                lid.barrierTimer = 5;
+                createScorePopup(lid.x, lid.y - 30, '锅盖形成屏障!');
+            }
+
+            for (let pan of hotPans) {
+                let panDist = Phaser.Math.Distance.Between(lid.x, lid.y, pan.x, pan.y);
+                if (panDist < 60) {
+                    pan.steamInterval = Math.max(8, pan.steamInterval + 2);
+                    createScorePopup(pan.x, pan.y - 50, '蒸汽被阻挡!');
+                }
+            }
+        }
+
+        if (lid.isBarrier) {
+            for (let steam of steamBursts) {
+                let steamDist = Phaser.Math.Distance.Between(lid.x, lid.y, steam.x, steam.y);
+                if (steamDist < 70) {
+                    steam.life = Math.min(steam.life, 0.3);
+                }
             }
         }
     }
@@ -1418,7 +1905,35 @@ function updateCollisions(dt) {
     }
 }
 
-function hitStain(stain, damage) {
+function hitStain(stain, damage, isSpray = false, isSliding = false) {
+    if (stain.type === STAIN_OIL) {
+        if (isSpray && !stain.softened) {
+            stain.softened = true;
+            if (stain.warningText) {
+                stain.warningText.setText('已软化');
+                stain.warningText.setFill('#4caf50');
+            }
+            createScorePopup(stain.x, stain.y - 20, '油渍已软化!');
+            createCleanEffect(stain.x, stain.y);
+            return;
+        }
+        if (!stain.softened) {
+            createScorePopup(stain.x, stain.y - 20, '需要先喷清洁剂!');
+            return;
+        }
+    }
+
+    if (stain.type === STAIN_FLOUR) {
+        if (isSpray && !stain.expanded) {
+            expandFlourStain(stain);
+            return;
+        }
+        if (!stain.wetted && !isSliding) {
+            createScorePopup(stain.x, stain.y - 20, '先滑行擦去干粉!');
+            return;
+        }
+    }
+
     stain.health -= damage;
 
     let newScale = stain.health / stain.maxHealth;
@@ -1432,14 +1947,73 @@ function hitStain(stain, damage) {
     createCleanEffect(stain.x, stain.y);
 }
 
+function expandFlourStain(stain) {
+    stain.expanded = true;
+    stain.wetted = true;
+    stain.size *= 1.5;
+    stain.maxHealth = 3;
+    stain.health = 3;
+
+    let scene = game.scene.scenes[0];
+    scene.tweens.add({
+        targets: stain,
+        scaleX: 1.5,
+        scaleY: 1.5,
+        duration: 300,
+        yoyo: false
+    });
+
+    if (stain.warningText) {
+        stain.warningText.setText('遇水扩大!');
+        stain.warningText.setFill('#ff9800');
+    }
+
+    createScorePopup(stain.x, stain.y - 20, '面粉遇水扩大了!');
+
+    let newStains = [];
+    for (let i = 0; i < 2; i++) {
+        let angle = Math.random() * Math.PI * 2;
+        let dist = stain.size * 0.6;
+        let nx = stain.x + Math.cos(angle) * dist;
+        let ny = stain.y + Math.sin(angle) * dist;
+        let counterLeft = 80;
+        let counterRight = GAME_WIDTH - 80;
+        let counterTop = 120;
+        let counterBottom = GAME_HEIGHT - 120;
+        nx = Phaser.Math.Clamp(nx, counterLeft + 30, counterRight - 30);
+        ny = Phaser.Math.Clamp(ny, counterTop + 30, counterBottom - 30);
+        let newStain = createStain(nx, ny, 30, STAIN_FLOUR);
+        newStain.wetted = true;
+        newStain.expanded = true;
+        newStains.push(newStain);
+    }
+}
+
 function cleanStain(stain) {
-    let points = stain.stubborn ? 30 : 10;
+    let points = 10;
+    if (stain.type === STAIN_STUBBORN) points = 30;
+    else if (stain.type === STAIN_OIL) points = 25;
+    else if (stain.type === STAIN_SYRUP) points = 20;
+    else if (stain.type === STAIN_FLOUR) points = 15;
+    else if (stain.type === STAIN_WATER) points = 5;
+
+    combo++;
+    comboTimer = 3;
+    if (combo > maxCombo) maxCombo = combo;
+
+    let comboBonus = Math.floor(combo / 3) * 5;
+    points += comboBonus;
     score += points;
+
+    let comboTextDisplay = combo > 2 ? ` x${combo}` : '';
+    createScorePopup(stain.x, stain.y, `+${points}${comboTextDisplay}`);
+
+    if (combo >= 3) {
+        updateComboDisplay();
+    }
 
     let idx = stains.indexOf(stain);
     if (idx > -1) stains.splice(idx, 1);
-
-    createScorePopup(stain.x, stain.y, `+${points}`);
 
     let scene = game.scene.scenes[0];
     scene.tweens.add({
@@ -1450,6 +2024,24 @@ function cleanStain(stain) {
         duration: 200,
         onComplete: () => stain.destroy()
     });
+}
+
+function updateComboDisplay() {
+    if (comboText) {
+        let comboLevel = Math.floor(combo / 5);
+        let colors = ['#ffeb3b', '#ff9800', '#f44336', '#e91e63', '#9c27b0'];
+        let color = colors[Math.min(comboLevel, colors.length - 1)];
+        comboText.setFill(color);
+        comboText.setText(`${combo} 连击!`);
+
+        let scene = game.scene.scenes[0];
+        scene.tweens.add({
+            targets: comboText,
+            scaleX: { from: 1.5, to: 1 },
+            scaleY: { from: 1.5, to: 1 },
+            duration: 200
+        });
+    }
 }
 
 function createCleanEffect(x, y) {
@@ -1497,7 +2089,7 @@ function createScorePopup(x, y, text) {
     });
 }
 
-function takeDamage(sourceX, sourceY) {
+function takeDamage(sourceX, sourceY, isBurn = false) {
     invincible = true;
     invincibleTimer = 1.5;
 
@@ -1509,8 +2101,115 @@ function takeDamage(sourceX, sourceY) {
 
     createScorePopup(player.x, player.y - 30, '-5秒');
 
+    if (isBurn) {
+        combo = 0;
+        comboTimer = 0;
+        if (comboText) comboText.setText('');
+        dropHeldItem();
+        createScorePopup(player.x, player.y - 60, '连击中断! 道具掉落!');
+    }
+
     let scene = game.scene.scenes[0];
     scene.cameras.main.shake(200, 0.02);
+}
+
+function hitBySteam(sourceX, sourceY) {
+    invincible = true;
+    invincibleTimer = 1.0;
+
+    timeLeft = Math.max(0, timeLeft - 3);
+
+    let knockback = new Phaser.Math.Vector2(player.x - sourceX, player.y - sourceY).normalize();
+    player.vx = knockback.x * 200;
+    player.vy = knockback.y * 200;
+
+    createScorePopup(player.x, player.y - 30, '-3秒 蒸汽烫伤!');
+
+    combo = 0;
+    comboTimer = 0;
+    if (comboText) comboText.setText('');
+
+    dropHeldItem();
+
+    let scene = game.scene.scenes[0];
+    scene.cameras.main.shake(150, 0.015);
+}
+
+function dropHeldItem() {
+    if (sponges.length > 0) {
+        let scene = game.scene.scenes[0];
+        let dropItem = scene.add.container(player.x, player.y);
+        dropItem.setDepth(45);
+
+        let body = scene.add.graphics();
+        body.fillStyle(0xffb74d, 1);
+        body.fillRoundedRect(-20, -14, 40, 28, 6);
+        body.lineStyle(2, 0xf57c00, 1);
+        body.strokeRoundedRect(-20, -14, 40, 28, 6);
+
+        let top = scene.add.graphics();
+        top.fillStyle(0xffcc80, 1);
+        top.fillRoundedRect(-18, -12, 36, 8, 3);
+
+        dropItem.add([body, top]);
+        dropItem.vx = (Math.random() - 0.5) * 200;
+        dropItem.vy = -150 - Math.random() * 100;
+        dropItem.life = 8;
+        dropItem.radius = 20;
+        dropItem.type = 'sponge';
+
+        let label = scene.add.text(0, 25, '掉落的海绵 (E捡起)', {
+            fontSize: '11px',
+            fill: '#ffb74d',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        }).setOrigin(0.5);
+        dropItem.add(label);
+
+        droppedItems.push(dropItem);
+
+        createScorePopup(player.x, player.y - 50, '海绵掉落!');
+    }
+}
+
+function updateDroppedItems(dt) {
+    for (let i = droppedItems.length - 1; i >= 0; i--) {
+        let item = droppedItems[i];
+        item.x += item.vx * dt;
+        item.y += item.vy * dt;
+        item.vy += 400 * dt;
+        item.vx *= 0.98;
+        item.life -= dt;
+
+        let counterLeft = 80;
+        let counterRight = GAME_WIDTH - 80;
+        let counterTop = 120;
+        let counterBottom = GAME_HEIGHT - 120;
+
+        if (item.x < counterLeft + 20) {
+            item.x = counterLeft + 20;
+            item.vx *= -0.5;
+        }
+        if (item.x > counterRight - 20) {
+            item.x = counterRight - 20;
+            item.vx *= -0.5;
+        }
+        if (item.y < counterTop + 20) {
+            item.y = counterTop + 20;
+            item.vy *= -0.5;
+        }
+        if (item.y > counterBottom - 20) {
+            item.y = counterBottom - 20;
+            item.vy *= -0.5;
+            item.vx *= 0.8;
+        }
+
+        if (item.life <= 0) {
+            item.destroy();
+            droppedItems.splice(i, 1);
+        }
+    }
 }
 
 function collectCrumb(crumb) {
@@ -1567,6 +2266,21 @@ function breakDish(dish) {
 }
 
 function tryInteract() {
+    for (let i = droppedItems.length - 1; i >= 0; i--) {
+        let item = droppedItems[i];
+        let dist = Phaser.Math.Distance.Between(player.x, player.y, item.x, item.y);
+        if (dist < 50) {
+            if (item.type === 'sponge') {
+                let scene = game.scene.scenes[0];
+                let newSponge = createSponge(item.x, item.y);
+                item.destroy();
+                droppedItems.splice(i, 1);
+                createScorePopup(player.x, player.y - 30, '捡起海绵!');
+                return;
+            }
+        }
+    }
+
     for (let faucet of drippingFaucets) {
         if (!faucet.dripping) continue;
         let dist = Phaser.Math.Distance.Between(player.x, player.y, faucet.x, faucet.y);
@@ -1575,6 +2289,28 @@ function tryInteract() {
             return;
         }
     }
+}
+
+function checkSteamDaredevil() {
+    for (let pan of hotPans) {
+        if (pan.isSteaming) {
+            let dist = Phaser.Math.Distance.Between(player.x, player.y, pan.x, pan.y);
+            if (dist < 90 && dist > 50 && !invincible) {
+                let speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+                if (speed > 300 && isSliding) {
+                    score += 15;
+                    combo += 2;
+                    comboTimer = 3;
+                    updateComboDisplay();
+                    createScorePopup(player.x, player.y - 40, '+15 冒险穿越!');
+                    invincible = true;
+                    invincibleTimer = 0.5;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 function closeFaucet(faucet) {
